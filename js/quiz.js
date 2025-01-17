@@ -7,6 +7,8 @@ class SkinTypeQuiz {
     this.quizContainer = document.getElementById('quiz-container');
     this.editingFromResults = false;
     this.loadSavedProgress();
+    this.tempAnswers = null;
+    this.tempAdditionalInput = null;
   }
 
   async loadQuizData() {
@@ -99,6 +101,8 @@ class SkinTypeQuiz {
   renderQuestion() {
     const currentStep = this.quizData.steps[this.currentQuestionIndex];
     const progress = ((this.currentQuestionIndex + 1) / this.quizData.steps.length) * 100;
+    const isLast = this.isLastQuestion();
+
 
     const questionHTML = `
       <div class="card">
@@ -116,25 +120,26 @@ class SkinTypeQuiz {
           `).join('')}
         </div>
         ${this.renderAdditionalInput()}
-        <div class="navigation-buttons">
+         <div class="navigation-buttons">
           ${this.currentQuestionIndex > 0 ?
             `<button id="prev-question" class="btn-secondary">Previous</button>` : ''}
           ${this.editingFromResults ?
-            `<button id="back-to-results" class="btn-secondary">Back to Results</button>` : ''}
-          <button id="next-question" class="btn-primary"
-                  ${this.userAnswers[this.currentQuestionIndex] === undefined ? 'disabled' : ''}>
-            ${this.isLastQuestion() ? 'Show Results' : 'Next'}
+            `<button id="back-to-results" class="btn-secondary">Back to Results</button>
+            ${!isLast ? `<button id="show-results" class="btn-primary">Show Results</button>` : ''}` : ''}
+          <button id="next-question" class="btn-primary" disabled>
+            ${isLast ? 'Show Results' : 'Next'}
           </button>
-        </div>
+      </div>
       </div>
     `;
 
     this.quizContainer.innerHTML = questionHTML;
     this.attachQuestionListeners();
+    this.validateAndUpdateNextButton();
   }
 
   renderAdditionalInput() {
-    if (this.userAnswers[this.currentQuestionIndex] === 5) { // "None of the above" is always the last option (index 5)
+    if (this.userAnswers[this.currentQuestionIndex] === 5) {
       return `
         <div class="additional-input">
           <textarea id="specific-concern"
@@ -152,6 +157,20 @@ class SkinTypeQuiz {
     return this.currentQuestionIndex === this.quizData.steps.length - 1;
   }
 
+  validateAndUpdateNextButton() {
+    const nextButton = document.getElementById('next-question');
+    if (!nextButton) return;
+
+    const currentAnswer = this.userAnswers[this.currentQuestionIndex];
+    const currentAdditionalInput = this.additionalInput[this.currentQuestionIndex];
+
+    if (currentAnswer === 5 && (!currentAdditionalInput || currentAdditionalInput.trim() === '')) {
+      nextButton.disabled = true;
+    } else if (currentAnswer !== undefined) {
+      nextButton.disabled = false;
+    }
+  }
+
   attachQuestionListeners() {
     const options = document.querySelectorAll('.option');
     options.forEach(option => {
@@ -167,9 +186,7 @@ class SkinTypeQuiz {
         }
 
         this.renderQuestion();
-
-        const nextButton = document.getElementById('next-question');
-        if (nextButton) nextButton.disabled = false;
+        this.validateAndUpdateNextButton();
       });
     });
 
@@ -181,16 +198,32 @@ class SkinTypeQuiz {
         if (charCount) {
           charCount.textContent = `Characters: ${this.additionalInput[this.currentQuestionIndex].length}/200`;
         }
+        this.validateAndUpdateNextButton();
       });
     }
 
     this.attachNavigationListeners();
   }
 
+  backupCurrentAnswers() {
+    this.tempAnswers = [...this.userAnswers];
+    this.tempAdditionalInput = [...this.additionalInput];
+  }
+
+  restoreAnswers() {
+    if (this.tempAnswers && this.tempAdditionalInput) {
+      this.userAnswers = [...this.tempAnswers];
+      this.additionalInput = [...this.tempAdditionalInput];
+      this.tempAnswers = null;
+      this.tempAdditionalInput = null;
+    }
+  }
+
   attachNavigationListeners() {
     const prevButton = document.getElementById('prev-question');
     const nextButton = document.getElementById('next-question');
     const backToResultsButton = document.getElementById('back-to-results');
+    const showResultsButton = document.getElementById('show-results');
 
     if (prevButton) {
       prevButton.addEventListener('click', () => {
@@ -201,6 +234,16 @@ class SkinTypeQuiz {
 
     if (backToResultsButton) {
       backToResultsButton.addEventListener('click', () => {
+        this.restoreAnswers();
+        this.editingFromResults = false;
+        this.showResults();
+      });
+    }
+
+    if (showResultsButton) {
+      showResultsButton.addEventListener('click', () => {
+        this.tempAnswers = null;
+        this.tempAdditionalInput = null;
         this.editingFromResults = false;
         this.showResults();
       });
@@ -212,6 +255,10 @@ class SkinTypeQuiz {
           this.editingFromResults = false;
           this.showResults();
         } else {
+          if (this.editingFromResults) {
+            this.tempAnswers = null;
+            this.tempAdditionalInput = null;
+          }
           this.currentQuestionIndex++;
           this.renderQuestion();
         }
@@ -254,6 +301,7 @@ class SkinTypeQuiz {
   attachResultsListeners() {
     document.querySelectorAll('.edit-answer').forEach(button => {
       button.addEventListener('click', (e) => {
+        this.backupCurrentAnswers();
         this.editingFromResults = true;
         this.currentQuestionIndex = parseInt(e.target.dataset.question);
         this.renderQuestion();
